@@ -1,0 +1,247 @@
+---
+title: "HomeCredit - Modeling with Logistic Regression"
+author: "Lindsey Ahlander"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: yes
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+
+# Package loading
+library(tidyverse)
+library(data.table)   
+library(caret)        
+library(nnet)         
+library(skimr)
+library(Hmisc)
+library(kableExtra)
+library(janitor)
+library(xgboost)
+library(pROC)
+library(Matrix)
+library(DiagrammeR)
+library(rpart.plot)
+library(randomForest)
+library(nnet)
+library(data.table)
+
+```
+
+```{r load_data}
+# Load in the data
+application_data <- fread("application_train_cleaned.csv")
+str(application_data)
+
+# factor character variables
+application_data <- application_data |>
+  mutate_if(is.character, as.factor) |> 
+  mutate_if(is.logical, as.factor)
+
+# log transform income variable
+log_income <- log(application_data$AMT_INCOME_TOTAL + 1)
+
+```
+
+# Introduction
+
+## Project Goal
+
+The goal of this project is to develop a predictive model that helps Home Credit assess the likelihood of loan applicants defaulting on their payments. By analyzing alternative data sources such as transactional history, demographics, and telecommunications data, the model aims to improve risk assessment for individuals with little to no traditional credit history. The insights gained from this analysis will enhance Home Credit’s ability to provide responsible lending solutions while promoting financial inclusion.
+
+## Business Problem
+
+Many individuals, particularly those who are unbanked or underbanked, struggle to access loans from traditional financial institutions due to a lack of formal credit history. This prevents them from owning property and building credit, limiting their financial opportunities. Home Credit seeks to bridge this gap by offering credit services to underserved populations. However, accurately predicting default risk is crucial to balancing financial accessibility with sustainable lending practices. By leveraging predictive analytics, Home Credit can better identify low-risk borrowers, increase revenue, and minimize default-related losses.
+
+## Analytical problem
+
+The primary analytical challenge is handling a high-dimensional, imbalanced dataset while ensuring that the model remains unbiased against underserved populations. Key issues include:
+
+-   Addressing class imbalance, as most applicants do not default (\~92%).
+-   Selecting the most relevant features from numerous variables to avoid overfitting and reduce model complexity.
+-   Cleaning and preprocessing data, including handling missing values, outliers, and inconsistencies.
+-   Integrating alternative data sources (such as transaction history) to improve predictions for applicants without traditional credit scores.
+-   Evaluating how dimensionality reduction and data transformations impact model performance and fairness.
+
+The final model should effectively differentiate between high- and low-risk borrowers, allowing Home Credit to make data-driven lending decisions that support financial inclusion while minimizing risk.
+
+# Data Preparation
+
+## Application Train Dataset Cleaning
+
+Initially, the application set required quite a bit of cleaning. We decided to remove columns with little to no variability or predictive power in addition to a majority of the columns that contained \>50% missing data. This took us from 122 variables in the train dataset to 32 variables thereby eliminating a large portion of the dimensionality in the dataset.
+
+For the bureau.csv and bureau_balance.csv files, we flattened the data for categorical columns by selecting the most common value to represent each column. For numeric columns, we calculated the mean value. This was done prior to joining the two tables.
+
+We believed that the columns representing time had a higher potential to be predictive in this dataset compared to the application data. However, we identified some outliers that appeared to be data entry errors. For example, the columns representing days were intended to have negative values (indicating days before a certain event), but some entries contained positive values. To handle this, we converted all days to their absolute values. Additionally, any value representing more than 50 years was capped at 50 years.
+
+For columns representing the amount of credit or debt a customer had, we encountered extreme outliers, with some values reaching hundreds of millions. For example, the column AMT_CREDIT_SUM highest value was 170,100,000. To manage this, we capped any value over 1,000,000 to equal 1,000,000 and then binned the remaining values in increments of 100,000. This was done to reduce the skewness in the data. It is also worth noting that the majority of customers had little to no outstanding debt or credit in these columns.
+
+## Feature Engineering
+
+One factor we thought might be influential in a client's ability to repay debt was if they owned assets. To create this column, we analyzed any loan ID that marked yes for car or home ownership. Additionally,Icreated a variable to bin car ownership from the two variables OWN_CAR_AGE and FLAG_OWN_CAR to improve the descriptive and predictive power of the car ownership data. We did this by imputing the NAs with a -1 to indicate that a missing car age indicated the person did not have a car. Then we split the variable into 5-year bins to improve future model analytics. Our initial analysis showed these two variables to be potentially valuable predictors.
+
+```{r}
+# Feature engineering: OWN_CAR_BIN
+# Impute OWN_CAR_AGE NAs with -1
+# train_clean <- train_clean |>
+#   mutate(OWN_CAR_AGE = ifelse(is.na(OWN_CAR_AGE), -1, OWN_CAR_AGE))
+# 
+# Create categorical OWN_CAR_BIN
+# train_clean$OWN_CAR_BIN <- train_clean$OWN_CAR_AGE |>
+#         cut(breaks = c(-1, 0, 5, 10, 15, 20, 25, 30, 100), 
+#         right = FALSE, 
+#         labels = c("No Car", "0-4 Years Old", "5-9 Years Old", "10-14 Years Old", 
+#                  "15-19 Years Old", "20-24 Years Old", "25-29 Years Old", "30+ Years Old"))
+
+# Check OWN_CAR_BIN variable
+# train_clean |>
+#   count(OWN_CAR_BIN) |>
+#   mutate(percentage = n / sum(n) * 100) |>
+#   arrange(desc(n))
+
+
+# Feature engineering: OWN_ASSET variable
+# Create binary OWN_ASSET variable
+# train_clean <- train_clean |>
+#   mutate(OWN_ASSET = ifelse(FLAG_OWN_REALTY == "Y" | FLAG_OWN_CAR == "Y", 1, 0))
+
+# Check OWN_ASSET variable
+# train_clean |>
+#   count(OWN_ASSET) |>
+#   mutate(percentage = n / sum(n) * 100) |>
+#   arrange(desc(n))
+```
+
+# Exploratory Data Analysis
+
+Here I will explore the relationship of certain variables with the target variable, which is whether or not a client defaulted on their loan. I will also look at the distribution of the target variable and the features I believe may be predictive of loan default.
+
+## Target Variable Distribution
+
+```{r target variable distribution}
+# table depicting the distribution of our target variable
+application_data |>
+  count(TARGET) |>
+  mutate(percentage = n / sum(n) * 100) |>
+  arrange(desc(n)) |>
+  kable() |>
+  kable_styling(full_width = F)
+```
+
+```{r target variable barplot, fig.height=8, fig.width=20}
+# barplot of target variable
+application_data |>
+  ggplot(aes(x = TARGET)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Distribution of Target Variable (Loan Default)",
+       x = "Target Variable (0 = No Default, 1 = Default)",
+       y = "Count") +
+  theme_minimal()
+```
+
+Note that the target variable is highly imbalanced, with approximately 92% of applicants not defaulting on their loans. This will be an important consideration when building our predictive model.
+
+## Variable Exploration
+
+**Target \~ AMT_INCOME_TOTAL**
+
+```{r target ~ AMT_INCOME_TOTAL, fig.height=8, fig.width=20}
+# target ~ AMT_INCOME_TOTAL
+ggplot(application_data, aes(x = log_income, fill = as.factor(TARGET))) +
+  geom_histogram(bins = 30, position = "dodge", alpha = 0.6) +
+  labs(title = "Income Distribution by Loan Default",
+       x = "Log of Total Income (AMT_INCOME_TOTAL)",
+       y = "Count",
+       fill = "Loan Default (TARGET)") +
+  theme_minimal() +
+  scale_x_continuous(labels = scales::label_number(scale = 1, accuracy = 1)
+  )
+
+```
+
+Due to the skewed nature of the `AMT_INCOME_TOTAL` variable, I applied a log transformation to better visualize the distribution of income across applicants. The histogram shows that while most applicants have lower incomes, there are a few high-income individuals, and the distribution appears to be somewhat normal after the transformation.Applying industry knowledge, I believe this factor will be predictive of loan default, as individuals with higher incomes are generally more likely to repay loans.
+
+**Target \~ AMT_CREDIT**
+
+```{r target ~ AMT_CREDIT, fig.height=8, fig.width=20}
+# target ~ AMT_CREDIT
+ggplot(application_data, aes(x = AMT_CREDIT, fill = as.factor(TARGET))) +
+  geom_histogram(bins = 30, position = "dodge", alpha = 0.5) +
+  labs(title = "Credit Amount Distribution by Loan Default",
+       x = "Credit Amount (AMT_CREDIT)",
+       y = "Count",
+       fill = "Loan Default (TARGET)") +
+  theme_minimal() +
+  scale_x_continuous(labels = scales::label_number(scale = 1, accuracy = 1)
+  )
+```
+
+The `AMT_CREDIT` variable represents the total amount of credit requested by the applicant. The histogram shows that most applicants request lower amounts of credit, with a few high-value requests. This distribution suggests that higher credit amounts may be associated with a higher risk of default, as individuals requesting larger loans may have more difficulty repaying them.
+
+**Target \~ EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3**
+
+```{r target ~ EXT_SOURCE, fig.height=8, fig.width=20}
+# target ~ EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3
+
+# reshape data for plotting
+application_data_long <- application_data |>
+  gather(key = "External_Source", value = "Value", EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3)
+
+# plot distribution of external sources by target variable
+ggplot(application_data_long, aes(x = Value, fill = as.factor(TARGET))) +
+  geom_histogram(bins = 30, position = "dodge") +
+  facet_wrap(~ External_Source, scales = "free_x") +
+  labs(title = "External Source Distribution by Loan Default",
+       x = "External Source Value",
+       y = "Count",
+       fill = "Loan Default (TARGET)") +
+  theme_minimal() +
+  scale_x_continuous(labels = scales::label_number(scale = 1, accuracy = 1))
+
+```
+
+The `EXT_SOURCE_1`, `EXT_SOURCE_2`, and `EXT_SOURCE_3` variables represent external credit scores. The histograms show that these scores are generally skewed towards lower values, with a few high scores. The distributions suggest that lower external scores may be associated with a higher risk of default, as individuals with lower credit scores are typically considered higher risk by lenders. This distribution also gives us insight into the large amounts of 0s or NAs that these variables have. This is expected in the case of HomeCredit, where we are identifying individuals that may not have a traditional credit history.
+
+# Logistic Regression Model
+
+First, I will partition the data into training and testing sets. Then I will fit a baseline logistic regression model using the training data. The model will include several features that I believe may be predictive of loan default, such as income, credit amount, external sources (credit scores), and education type.
+
+```{r partitioning data}
+# partition data for testing (80/20)
+set.seed(123) # for reproducibility
+train_index <- createDataPartition(application_data$TARGET, p = 0.8, list = FALSE)
+train_data <- application_data[train_index, ]
+test_data <- application_data[-train_index, ]
+train_labels <- train_data$TARGET[train_index]
+test_labels <- test_data$TARGET[-train_index]
+
+# apply log transformation to income variable in both train and test sets
+train_data$log_income <- log(train_data$AMT_INCOME_TOTAL + 1)
+test_data$log_income <- log(test_data$AMT_INCOME_TOTAL + 1)
+
+```
+
+```{r logistic regression model}
+# fit logistic regression model using identified predictive variables
+model <- glm(TARGET ~ log_income * AMT_CREDIT + NAME_EDUCATION_TYPE + EXT_SOURCE_1 + EXT_SOURCE_2 + EXT_SOURCE_3 + DAYS_BIRTH * OWN_CAR_BIN + OWN_ASSET + CODE_GENDER, 
+                      data = train_data, 
+                      family = binomial)
+
+# summarize the model
+summary(model)
+
+# predict on test set
+predicted_probabilities <- predict(model, 
+                                   newdata = test_data, 
+                                   type = "response")
+
+# compute AUC
+roc_curve <- roc(test_data$TARGET, predicted_probabilities)
+auc_value <- auc(roc_curve)
+cat("AUC of the logistic regression model: ", round(auc_value, 2), "\n")
+```
+With an AUC of 0.72, the logistic regression model demonstrates decent predictive power. However, there is room for improvement, especially considering the class imbalance in the target variable.
