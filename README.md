@@ -3,6 +3,7 @@
 Many individuals, especially those who are unbanked or underbanked, face significant challenges when trying to access loans from traditional financial institutions. This is often due to a lack of formal credit history, which prevents them from building credit and owning property, further limiting their financial opportunities. Home Credit seeks to address this issue by offering credit services to underserved populations. However, accurately predicting the risk of loan defaults is essential to balancing financial accessibility with sustainable lending practices. By utilizing predictive analytics, Home Credit can better identify low-risk borrowers, increase revenue, and minimize losses associated with defaults, ultimately improving both access to credit and financial stability for its customers.
 
 **Project Objective**
+
 The goal of this project is to develop a predictive model that assists Home Credit in assessing the likelihood of loan applicants defaulting on their payments. The model will analyze alternative data sources—such as transactional history, demographic information, and telecommunications data—to improve risk assessment for individuals who have little to no traditional credit history. By enhancing the ability to evaluate these applicants, Home Credit can make more informed lending decisions, providing responsible financial solutions while also promoting greater financial inclusion.
 
 **Proposed Solution**
