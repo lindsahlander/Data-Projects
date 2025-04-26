@@ -34,5 +34,6 @@ With our model, Home Credit would be able to accurately predict an additional 29
 
 This project presented several challenges along the way. One significant roadblock was the large size of the application data, which contained over 300,000 applicants. This created computational challenges that we mitigated by downsampling the dataset and removing unnecessary variables. We also cleaned the data by eliminating predictors with too many missing values, ensuring the dataset was both manageable and meaningful for modeling. Additionally, during the Kaggle submission process, we encountered a submission issue that initially caught us off guard. However, through diligent troubleshooting, we were able to identify and resolve the issue, ensuring our submission was successful.
 
+**Takeaway**
 
-
+This project gave me the opportunity to apply my analytical skills in a unique industry with compelling use cases for predictive analytics. I learned how to combine multiple datasets to predict applicant behavior and how to apply and fine-tune various models to improve predictive accuracy. Through this experience, I also gained a deeper understanding of the importance of feature engineering and dataset cleaning, especially when working with large volumes of data. Ultimately, this project allowed me to merge my knowledge of the banking industry with my background in business analytics, resulting in a model that increased the number of approved applicants while ensuring Home Credit maintained a low level of risk.
