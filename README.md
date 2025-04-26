@@ -1,9 +1,8 @@
-[**Home Credit Project - EDA**]([url](https://github.com/lindsahlander/Data-Projects/blob/main/HomeCredit_EDA.Rmd))
+[**Home Credit Project - EDA**]([https://github.com/lindsahlander/Data-Projects/blob/main/HomeCredit_EDA.Rmd])
 
 This file explores the datasets from the Kaggle Home Credit competition, focusing on exploratory data analysis (EDA). It includes data cleaning, visualization, and an in-depth look at various features to better understand the factors influencing loan defaults.
 
-[**Home Credit Project - EDA Joined**
-]([url](https://github.com/lindsahlander/Data-Projects/blob/main/HomeCredit_EDA_Joined.Rmd))
+[**Home Credit Project - EDA Joined**]([https://github.com/lindsahlander/Data-Projects/blob/main/HomeCredit_EDA_Joined.Rmd])
 
 Building on the initial EDA, this file merges different datasets to provide a more comprehensive view of the data. It includes further analysis to uncover hidden relationships and insights that can enhance model performance in predicting loan defaults.
 
