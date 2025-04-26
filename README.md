@@ -1,0 +1,1 @@
+This R Markdown file builds a logistic regression model to predict loan defaults using the Home Credit dataset. It includes steps like data cleaning, feature exploration, and model evaluation. The goal is to predict whether a loan will default based on various factors like income, credit score, and asset ownership.
