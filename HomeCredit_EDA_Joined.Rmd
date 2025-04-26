@@ -1,0 +1,102 @@
+---
+title: "HomeCredit EDA - Joined Datasets"
+author: "Lindsey Ahlander"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+  html_document:
+    toc: true
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(corrplot)
+library(data.table)
+```
+
+## Data Import and Prep
+
+```{r Importing Data}
+app_train <- fread("application_train.csv")
+app_test <- fread("application_test.csv")
+bureau <- fread("bureau.csv")
+bureau_balance <- fread("bureau_balance.csv")
+credit_card_balance <- fread("credit_card_balance.csv")
+installments_payments <- fread("installments_payments.csv")
+pos_cash <- fread("POS_CASH_balance.csv")
+previous_application <- fread("previous_application.csv")
+```
+
+# Aggregate Data
+
+```{r Aggregate Data, warning=FALSE}
+# Aggregate large datasets
+
+bureau_balance_agg <- bureau_balance %>%
+  group_by(SK_ID_BUREAU) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+bureau_agg <- bureau %>%
+  left_join(bureau_balance_agg, by = "SK_ID_BUREAU") %>%
+  group_by(SK_ID_CURR) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+credit_card_agg <- credit_card_balance %>%
+  group_by(SK_ID_CURR) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+installments_agg <- installments_payments %>%
+  group_by(SK_ID_CURR) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+pos_cash_agg <- pos_cash %>%
+  group_by(SK_ID_CURR) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+previous_app_agg <- previous_application %>%
+  group_by(SK_ID_CURR) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+```
+
+# Join Datasets
+
+```{r Join Datasets}
+# Join datasets to app_train
+train_merged <- app_train %>%
+  left_join(bureau_agg, by = "SK_ID_CURR") %>%
+  left_join(credit_card_agg, by = "SK_ID_CURR") %>%
+  left_join(installments_agg, by = "SK_ID_CURR") %>%
+  left_join(pos_cash_agg, by = "SK_ID_CURR") %>%
+  left_join(previous_app_agg, by = "SK_ID_CURR")
+```
+
+
+# Remove unnecessary columns
+
+```{r Remove Unnecessary Columns}
+# Remove columns that are not needed for analysis
+# Remove variables with >50% missing from the train fold
+train_merged <- train_merged |>
+  select(-c(COMMONAREA_AVG, COMMONAREA_MODE, COMMONAREA_MEDI, NONLIVINGAPARTMENTS_AVG, NONLIVINGAPARTMENTS_MODE, NONLIVINGAPARTMENTS_MEDI, LIVINGAPARTMENTS_AVG, LIVINGAPARTMENTS_MODE, LIVINGAPARTMENTS_MEDI, FLOORSMIN_AVG, FLOORSMIN_MODE, FLOORSMIN_MEDI, YEARS_BUILD_AVG, YEARS_BUILD_MODE, YEARS_BUILD_MEDI, LANDAREA_AVG, LANDAREA_MODE, LANDAREA_MEDI, BASEMENTAREA_AVG, BASEMENTAREA_MODE, BASEMENTAREA_MEDI, NONLIVINGAREA_AVG, NONLIVINGAREA_MODE, NONLIVINGAREA_MEDI, ELEVATORS_AVG, ELEVATORS_MODE, ELEVATORS_MEDI, APARTMENTS_AVG, APARTMENTS_MODE, APARTMENTS_MEDI, ENTRANCES_AVG, ENTRANCES_MODE, ENTRANCES_MEDI, LIVINGAREA_AVG, LIVINGAREA_MODE, LIVINGAREA_MEDI)) # Remove variables
+```
+
+# Correlation Analysis
+
+```{r Correlation Analysis}
+# filter for numeric variables
+train_numeric <- train_merged %>%
+  select(where(is.numeric))
+correlation_matrix <- cor(train_numeric, use = "pairwise.complete.obs")
+# filter for variables with a high correlation
+cor_threshold <- 0.5
+high_corr_vars <- rownames(correlation_matrix)[apply(abs(correlation_matrix) > cor_threshold, 1, any)]
+filtered_corr_matrix <- correlation_matrix[high_corr_vars, high_corr_vars]
+corrplot(correlation_matrix, method = "circle", type = "upper", tl.col = "black", tl.srt = 45)
+```
+
