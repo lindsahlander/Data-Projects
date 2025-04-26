@@ -1,0 +1,262 @@
+---
+title: "Home Credit: Exploratory Data Analysis"
+author: "Lindsey Ahlander"
+format: 
+  html:
+    self-contained: true
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    toc-title: "Contents"
+execute:
+  include: true
+  eval: true    
+  warning: false
+  message: false
+---
+
+```{r setup, echo=TRUE, warning=FALSE, message=FALSE}
+# Setup
+knitr::opts_chunk$set(echo = FALSE, message= F, warning = F)  
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(data.table)
+```
+
+```{r, echo=TRUE, warning=FALSE}
+# Import CSV files
+test <- fread("application_test.csv")
+train <- fread("application_train.csv")
+```
+
+## Part 1 - Introduction
+
+### Business Problem Statement
+
+Home Credit is a lender dedicated to serving the un-banked population. Its primary goal is to identify individuals who are under-served by traditional banks and offer them loans and credit services. To achieve this, Home Credit needs a complete view of potential clients—encompassing their prior banking history, transaction history, and demographic information. This holistic approach enables Home Credit to better understand each client’s needs and provide the right financial services.
+
+In this exploratory data analysis, I will identify key variables from the application process (application_train.csv) that can help Home Credit assess ideal candidates for its loan and credit services. The target variable (TARGET) is binary (0/1), indicating whether a client struggles with loan repayment. For clarity, I will refer to this variable as "default" throughout the analysis (further explanation below). By examining these variables, Home Credit can gain deeper insights into its target customer base, allowing the company to better tailor financial products for un-banked and under-served borrowers while enhancing its ability to predict loan defaults.
+
+### Questions & Variables
+
+Understanding the target variable is important since Home Credit defines default risk differently than traditional models. In the data dictionary the TARGET variable is described as follows:
+
+-   "Target variable (1 - client with payment difficulties: he/she had late payment more than X days on at least one of the first Y installments of the loan in our sample, 0 - all other cases)"
+
+Rather than being a strict binary default predictor, this variable captures early repayment behavior, which Home Credit likely uses to assess financial risk. For clarity, throughout my EDA I will refer to the target variable as "Default Status" as it aligns with how Home Credit identifies clients who may struggle with repayment.
+
+```{r, echo=TRUE}
+# Calculate loan "default" rate
+default_rate <- mean(train$TARGET) * 100
+print(default_rate)
+```
+
+Home Credit’s current default rate is about 8%, which suggests that most borrowers manage their payments well. This indicates that Home Credit has a solid vetting process for identifying lower-risk applicants, but further analysis can help uncover key predictors that could refine loan approval criteria even further.
+
+Below is a list of questions to guide my exploratory data analysis, aiming to gain a better understanding of Home Credit’s client base and identify factors that influence default risk.
+
+-   What do the EXT_SOURCE 1, 2, and 3 variables represent? Is this a normalized score related to credit ratings?
+-   Is there an income level at which clients are more or less likely to default?
+-   Does the number of dependents affect loan repayment or default likelihood?
+-   Does asset ownership (car, home) indicate a higher likelihood of loan repayment?
+-   How does education level influence a client’s likelihood of repaying or defaulting on a loan?
+-   Does the client’s living arrangement (renting, owning, living with relatives, etc.) impact repayment or default probability?
+
+In order to answer these questions, I'll be focusing my exploratory data analysis on the following variables:
+
+-   EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3 - Numeric
+-   AMT_INCOME_TOTAL - Numeric
+-   CNT_CHILDREN - Numeric
+-   FLAG_OWN_CAR - Will need to be factored
+-   FLAG_OWN_REALTY - Will need to be factored
+-   NAME_EDUCATION_TYPE - Will need to be factored
+-   NAME_HOUSING_TYPE - Will need to be factored
+
+## Part 2 - Exploratory Data Analysis
+
+### Data Cleanup & Setup
+
+**Locate missing values (N/As)**
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# Function to count missing values per column
+count_missings <- function(x) sum(is.na(x))
+
+# Identify missing values only in columns with NAs and display only NAs to avoid lengthy output
+missing_vars <- train |> summarize_all(count_missings)
+missing_vars <- missing_vars[, colSums(missing_vars) > 0]
+print(missing_vars)
+```
+
+It appears that most variables have no missing values except for the EXT_SOURCE 1, 2, and 3 variables. 1 and 3 have too many N/As so it seems that it would be unwise to try and impute that many missing values. Since EXT_SOURCE_2 only has 660 missing values (which represents about 0.21% of the total population in the training data), I will impute the value using the median score, which is a good measure of central tendency and is not sensitive to outliers in the variable.
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# mutate categorical variables to be factored
+train <- train |> 
+  mutate(
+    FLAG_OWN_CAR = factor(FLAG_OWN_CAR),
+    FLAG_OWN_REALTY = factor(FLAG_OWN_REALTY),
+    NAME_EDUCATION_TYPE = factor(NAME_EDUCATION_TYPE),
+    NAME_HOUSING_TYPE = factor(NAME_HOUSING_TYPE),
+    TARGET = factor(TARGET)
+  )
+
+# Impute N/As for EXT_SOURCE_2
+train$EXT_SOURCE_2[is.na(train$EXT_SOURCE_2)] <- median(train$EXT_SOURCE_2, na.rm = TRUE)
+```
+
+### Data Exploration
+
+Below I will explore relationships that each variable has (or doesn't have) with the target variable.
+
+**External Source (Credit Score)?**
+
+```{r, echo=TRUE}
+# Box plot to depict relationship between the external source score (2) and default status
+ggplot(train, aes(x = as.factor(TARGET), y = EXT_SOURCE_2, fill = as.factor(TARGET))) +
+  geom_boxplot(outlier.colour = "darkblue") +
+  labs(title = "External Source 2 ~ Default Status",
+       x = "Default (0 = No, 1 = Yes)",
+       y = "External Source (2) Score",
+       fill = "Default Status") +
+  theme_minimal()
+
+
+```
+
+The graph suggests that lower External Source 2 scores are associated with higher default rates. This aligns with the concept of a credit score—where lower scores indicate a higher risk of missed payments. Given this strong relationship, External Source 2 is a valuable predictor of loan repayment and should be considered when assessing client eligibility at Home Credit.
+
+**Income total**
+
+```{r, echo=TRUE}
+# Box plot to understand the relationship between a client's total income and default status
+ggplot(train, aes(x = TARGET, y = AMT_INCOME_TOTAL)) +
+  geom_boxplot(outlier.colour = "darkblue") +
+  scale_y_log10() +  # Log transformation due to large variability in income
+  labs(title = "Income Distribution by Default Status",
+       x = "Default (0 = No, 1 = Yes)",
+       y = "Income Total (Log Scale)") +
+  theme_minimal()
+```
+
+The similar income distribution between defaulters and non-defaulters suggests that income alone is not a strong predictor of default. However, it remains a key indicator of financial capacity and can provide valuable context when assessing a client’s ability to repay. To improve risk evaluation, it should be analyzed alongside other factors such as debt levels, employment stability, and credit history.
+
+**Number of Dependents**
+
+```{r, echo=TRUE}
+# Bar chart to depict relationship between number of children and target variable
+ggplot(train, aes(x = as.factor(CNT_CHILDREN), fill = TARGET)) +
+  geom_bar() +
+  labs(title = "Count: Number of Children ~ Default Status",
+       x = "Number of Children",
+       y = "Number of Clients",
+       fill = "Default (0 = No, 1 = Yes)") +
+  theme_minimal()
+
+# Bar chart to depict proportion of loan default by each count of children category
+ggplot(train, aes(x = as.factor(CNT_CHILDREN), fill = TARGET)) +
+  geom_bar(position = "fill") +  # "fill" to make the plot a proportion for each count of children
+  labs(title = "Proportion: Number of Children ~ Default Status",
+       x = "Number of Children",
+       y = "Proportion of Clients",
+       fill = "Default (0 = No, 1 = Yes)") +
+  theme_minimal()
+```
+
+Since loan default doesn’t show a clear pattern based on the number of children, this variable alone isn’t a strong predictor of default. However, it offers insight into Home Credit’s typical client base, revealing that most clients have no children. While not directly tied to risk, it helps build a broader understanding of customer demographics.
+
+**Asset Ownership**
+
+```{r, echo=TRUE}
+# Summary table to depict loan default behavior based on previous asset ownership
+summary_table <- train |>
+  group_by(FLAG_OWN_CAR, FLAG_OWN_REALTY, TARGET) |>
+  summarise(Count = n()) |>
+  mutate(Percentage = round((Count / sum(Count) * 100), 2)) 
+
+print(summary_table)
+# create asset_owned variable (combines flag own car and flag own realty to one variable) that indicates if either a car is owned or realty is owned, then true
+train$asset_owned <- ifelse(train$FLAG_OWN_CAR == 1 | train$FLAG_OWN_REALTY == 1, TRUE, FALSE)
+
+```
+
+This variable provides insight into Home Credit’s client base and confirms a relatively low loan default rate (7-9%). While not a strong predictor of default, it helps characterize customer demographics and financial behavior. Understanding these patterns can support more informed lending decisions for Home Credit.
+
+**Educational Background**
+
+```{r, echo=TRUE}
+# Bar chart to show proportion of loan default by educational background
+ggplot(train, aes(x = NAME_EDUCATION_TYPE, fill = TARGET)) +
+  geom_bar(position = "fill") +  # "fill" to show proportion
+  labs(title = "Education Level ~ Default Status",
+       x = "Education Level",
+       y = "Proportion of Clients",
+       fill = "Default (0 = No, 1 = Yes)") +
+  theme_minimal() +
+  coord_flip()  # Flip for readability
+```
+
+This graph suggests a correlation between education level and loan default rates, with higher education generally linked to lower default rates. However, education alone isn’t a definitive predictor of repayment behavior. To accurately assess a client’s likelihood of making payments, it’s essential to consider additional factors such as income, employment status, and credit history.
+
+**Living Arrangement**
+
+```{r, echo=TRUE}
+#Bar chart to show number of customers by housing type and default status
+ggplot(train, aes(x = NAME_HOUSING_TYPE, fill = TARGET)) +
+  geom_bar() +
+  labs(title = "Count: Living Arrangement ~ Default Status",
+       x = "Living Arrangement",
+       y = "Number of Clients",
+       fill = "Default (0 = No, 1 = Yes)") +
+  theme_minimal() +
+  coord_flip()
+
+# Bar chart to depict loan default proportion by various living situations
+ggplot(train, aes(x = NAME_HOUSING_TYPE, fill = TARGET)) +
+  geom_bar(position = "fill") +
+  labs(title = "Proportion: Living Arrangement ~ Default Status",
+       x = "Living Arrangement",
+       y = "Proportion of Clients",
+       fill = "Default (0 = No, 1 = Yes)") +
+  theme_minimal() +
+  coord_flip()
+```
+
+These charts depict first a count of clients by living arrangement and then a proportion of loan default status by each living arrangement. While living arrangements provide some insight into client demographics, it does not appear to be a strong predictor of loan default. However, renters and municipal apartment residents show slightly higher default rates, suggesting that housing stability might be linked to financial stability.
+
+### Joined Dataset
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+# Join Bureau data set with application data
+bureau <- read.csv("bureau.csv")
+
+train_merged <- train |>
+  left_join(bureau, by = "SK_ID_CURR")
+```
+
+**Total Credit Amount**
+
+```{r, echo=TRUE}
+# Box plot to identify relationship betwee loan default status and total amount borrowed my client
+ggplot(train_merged, aes(x = TARGET, y = AMT_CREDIT_SUM, fill = TARGET)) +
+  geom_boxplot(outlier.colour = "darkblue") +
+  scale_y_log10() + # log transform due to high variability in variable
+  labs(title = "Total Credit Amount ~ Default Status",
+       x = "Default (0 = No, 1 = Yes)",
+       y = "Total Credit Amount",
+       fill = "Default Status") +
+  theme_minimal()
+
+```
+
+Total credit amount does not appear to be a strong predictor on whether a client is likely to default on loan repayment. This indicates that the credit amount that the client currently has is not alone a strong predictor of loan repayment and should be considered alongside other factors.
+
+## Part 3 - Results
+
+### Conclusion
+
+After exploring the variables in Home Credit’s client applications, it’s clear that they provide valuable insight into the demographics of their client base. This data helps Home Credit better understand the population they serve while also offering meaningful context on loan repayment and transaction history.
+
+My main takeaway from this analysis is that while these variables offer useful insights, they are not strong standalone indicators of loan repayment ability. Further analysis is needed to determine which variables meaningfully correlate with the target variable and other factors in the dataset. However, External Source 2 emerged as a strong predictor of loan repayment and should be given significant consideration in the client approval process. Additionally, education level provided valuable insight, suggesting that higher education may be linked to a better repayment history.
