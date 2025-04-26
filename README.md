@@ -1,3 +1,5 @@
+**Home Credit Project**
+
 This R Markdown file builds a logistic regression model to predict loan defaults using the Home Credit dataset. The project involves data cleaning, feature exploration, and model evaluation. The goal is to help Home Credit assess the risk of loan defaults based on factors like income, credit score, and asset ownership.
 
 Using key predictors such as income, credit history, and asset ownership, my logistic regression model predicts the likelihood of default with 72% accuracy. This model can assist lenders in making data-driven decisions, potentially reducing financial risk and improving loan approval processes.
